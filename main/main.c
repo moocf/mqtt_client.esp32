@@ -7,8 +7,8 @@
 #include "macros.h"
 
 
-static const char *MQTT_URI = "mqtt://10.1.1.1:1883";
-
+static const char *MQTT_URI = "mqtt://10.2.28.74:1883";
+static int mqtt_pokeball_sub = 0;
 
 static esp_err_t nvs_init() {
   printf("- Initialize NVS\n");
@@ -25,39 +25,43 @@ static esp_err_t nvs_init() {
 static void on_mqtt(void *arg, esp_event_base_t base, int32_t id, void *data) {
   esp_mqtt_event_handle_t d = (esp_mqtt_event_handle_t) data;
   esp_mqtt_client_handle_t h = d->client;
+  d->topic = d->topic? d->topic : "";
+  d->data = d->data? d->data : "";
+  // d->data[d->data_len] = '\0';
   int msg;
   switch (d->event_id) {
     case MQTT_EVENT_CONNECTED:
     printf("- Connected to MQTT broker\n");
-    printf(": Subscribe to '/pokedex'\n");
     msg = esp_mqtt_client_subscribe(h, "/pokedex", 0);
-    printf(": Subscribe to '/pokeball'\n");
+    printf(": subscribe to '/pokedex': msg=%d\n", msg);
     msg = esp_mqtt_client_subscribe(h, "/pokeball", 0);
-    printf(": Send 'charmender' on '/pokemon'\n");
+    printf(": subscribe to '/pokeball': msg=%d\n", msg);
+    mqtt_pokeball_sub = msg;
     msg = esp_mqtt_client_publish(h, "/pokemon", "charmender", 0, 1, 0);
-    printf(": Send 'squirtle' on '/pokemon'\n");
+    printf(": send 'charmender' on '/pokemon': msg=%d\n", msg);
     msg = esp_mqtt_client_publish(h, "/pokemon", "squirtle", 0, 1, 0);
-    printf(": Send 'bulbasaur' on '/pokemon'\n");
+    printf(": send 'squirtle' on '/pokemon': msg=%d\n", msg);
     msg = esp_mqtt_client_publish(h, "/pokemon", "bulbasaur", 0, 1, 0);
+    printf(": send 'bulbasaur' on '/pokemon': msg=%d\n", msg);
     break;
     case MQTT_EVENT_DISCONNECTED:
     printf("- Disconnected from MQTT broker\n");
     break;
     case MQTT_EVENT_SUBSCRIBED:
-    printf("- Subscribed to '%s'\n", d->topic);
-    if (strcmp(d->topic, "/pokeball") == 0) {
-      printf(": Unsubscribe to '/pokeball'\n");
+    printf("- Subscribed to topic: msg=%d\n", d->msg_id);
+    if (d->msg_id == mqtt_pokeball_sub) {
       msg = esp_mqtt_client_unsubscribe(h, "/pokeball");
+      printf(": unsubscribe to '/pokeball': msg=%d\n", msg);
     }
     break;
     case MQTT_EVENT_UNSUBSCRIBED:
-    printf("- Unsubscribed from '%s'\n", d->topic);
+    printf("- Unsubscribed from topic: msg=%d\n", d->msg_id);
     break;
     case MQTT_EVENT_PUBLISHED:
-    printf("- Published '%s' to '%s'\n", d->data, d->topic);
+    printf("- Published data to topic: msg=%d\n", d->msg_id);
     break;
     case MQTT_EVENT_DATA:
-    printf("- Data '%s' recieved on '%s'\n", d->data, d->topic);
+    printf("- Data recieved on topic: msg=%d\n", d->msg_id);
     break;
     case MQTT_EVENT_ERROR:
     printf("- MQTT error ocurred\n");
@@ -66,6 +70,7 @@ static void on_mqtt(void *arg, esp_event_base_t base, int32_t id, void *data) {
     printf("- Other event id: %d\n", d->event_id);
     break;
   }
+  (void)(msg);
 }
 
 
@@ -90,7 +95,8 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data) {
     printf("- Connected to '%s' on channel %d\n", d->ssid, d->channel);
   } else if (id == WIFI_EVENT_STA_DISCONNECTED) {
     wifi_event_sta_disconnected_t *d = (wifi_event_sta_disconnected_t*) data;
-    printf("- Disconnected from '%s'\n", d->ssid);
+    printf("- Disconnected from '%s', reconnecting ...\n", d->ssid);
+    ERETV( esp_wifi_connect() );
   }
 }
 
@@ -98,7 +104,7 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data) {
 static void on_ip(void *arg, esp_event_base_t base, int32_t id, void *data) {
   if (id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *d = (ip_event_got_ip_t*) data;
-    printf("- Got IP=%s\n", ip4addr_ntoa((&d->ip_info.ip));
+    printf("- Got IP=%s\n", ip4addr_ntoa(&d->ip_info.ip));
     ERETV( mqtt_init(MQTT_URI) );
   }
 }
